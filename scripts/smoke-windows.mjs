@@ -44,7 +44,7 @@ try {
   assert.equal(fs.readFileSync(path.join(sandbox, ".claude.json"), "utf8"), before);
   call("uninstall", "--agent", "all");
   assert.equal(fs.readFileSync(claudeInstructions, "utf8"), "My existing rule stays.\n");
-  assert.equal(JSON.parse(fs.readFileSync(path.join(sandbox, ".claude.json"), "utf8")).mcpServers["mobile-mcp"], undefined);
+  assert.ok(!fs.existsSync(path.join(sandbox, ".claude.json")), "uninstaller removed a config file created by the installer");
   assert.ok(!fs.existsSync(path.join(sandbox, ".agents", "skills", "build-mcp-exe", "SKILL.md")));
   console.log("All EXE/install/uninstall/safe-dry-run smoke tests passed.");
 } finally {
