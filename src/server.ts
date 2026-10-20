@@ -1,9 +1,7 @@
 import { McpServer } from "@modelcontextprotocol/server";
 import { z } from "zod";
 import fs from "node:fs";
-import os from "node:os";
 import path from "node:path";
-import crypto from "node:crypto";
 import { ChildProcess } from "node:child_process";
 
 import { error, trace } from "./logger";
@@ -112,16 +110,6 @@ export const createMcpServer = (): McpServer => {
 		instructions: SERVER_INSTRUCTIONS,
 	});
 
-
-	const getClientName = (): string => {
-		try {
-			const clientInfo = server.server.getClientVersion();
-			const clientName = clientInfo?.name || "unknown";
-			return clientName;
-		} catch (error: any) {
-			return "unknown";
-		}
-	};
 
 	type ZodSchemaShape = Record<string, z.ZodType>;
 
@@ -888,7 +876,7 @@ export const createMcpServer = (): McpServer => {
 
 				const screenshot64 = screenshot.toString("base64");
 				trace(`Screenshot taken: ${screenshot.length} bytes, ${screenshotSize.width}x${screenshotSize.height}`);
-		
+
 				const content: ScreenshotContent[] = [];
 				if (mapping !== null) {
 					content.push({ type: "text", text: mapping });
