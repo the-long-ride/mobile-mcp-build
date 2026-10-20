@@ -39,17 +39,6 @@ jobs:
     - name: Audit
       run: npm audit --audit-level high --omit dev
 
-    - name: Produce formatted source for PR
-      shell: bash
-      run: |
-        npx eslint src/agent-setup.ts src/index.ts src/mobilecli.ts src/server.ts --fix || true
-        for file in src/agent-setup.ts src/index.ts src/mobilecli.ts src/server.ts; do
-          echo "FORMATTED_START:$file"
-          base64 -w0 "$file"
-          echo
-          echo "FORMATTED_END:$file"
-        done
-
     - name: Lint
       run: npm run lint
 
