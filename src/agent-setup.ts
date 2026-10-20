@@ -215,12 +215,14 @@ function executablePath(explicit?: string): string {
 	return exe;
 }
 function aevraGuide(exe: string): void {
-	console.log("Aevra: manual configuration only. No Aevra settings were changed.");
-	console.log("In Aevra's supported external MCP integration UI, register a local stdio server:");
-	console.log(toJson({ name: "mobile-mcp", command: exe, args: [], env: {
-		MOBILEMCP_DISABLE_TELEMETRY: "1", MOBILEWRIGHT_DISABLE_TELEMETRY: "1", DO_NOT_TRACK: "1"
-	} }));
-	console.log("Enable this only if your Aevra version exposes custom MCP server registration.");
+	const quoted = "'" + exe.replace(/'/g, "''") + "'";
+	console.log("Aevra: manual integration only. No Aevra settings were modified.");
+	console.log("Aevra Admin UI: Settings -> MCP servers -> Add server; choose stdio,");
+	console.log("name mobile-mcp, set command to: " + exe + " (risk: HIGH).");
+	console.log("Alternatively, in PowerShell, run this command yourself:");
+	console.log("aevra mcp add mobile-mcp --transport stdio --command " + quoted + " --risk HIGH");
+	console.log("Verify with: aevra mcp list");
+	console.log("Aevra will catalog and publish the MCP server tools behind its approval policies.");
 }
 
 export async function runAgentSetup(action: SetupAction, options: SetupOptions): Promise<void> {
