@@ -23,7 +23,7 @@ interface SetupState {
 }
 type PlannedWrite = { file: string; content: string | null; description: string };
 
-const HOME = os.homedir();
+const HOME = process.env.MOBILE_MCP_SETUP_HOME ? path.resolve(process.env.MOBILE_MCP_SETUP_HOME) : os.homedir();
 const STATE_PATH = path.join(HOME, ".config", "mobile-mcp-build", "installed.json");
 const SKILL_DIR = path.join(HOME, ".agents", "skills");
 const MARKER_START = "<!-- BEGIN mobile-mcp-build managed instructions -->";
@@ -286,8 +286,10 @@ export async function runAgentSetup(action: SetupAction, options: SetupOptions):
         if (current.skills[name] && existing !== null && checksum(existing) !== current.skills[name]) {
           throw new Error("Managed skill was edited, refusing overwrite: " + skillPath);
         }
-        push(writes, skillPath, content, "Install global skill " + name);
-        current.skills[name] = checksum(content);
+        if (existing === null || current.skills[name]) {
+          push(writes, skillPath, content, "Install global skill " + name);
+          current.skills[name] = checksum(content);
+        }
       }
     } else if (!Object.keys(current.agents).length) {
       for (const [name, hash] of Object.entries(current.skills)) {
