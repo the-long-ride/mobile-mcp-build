@@ -1,16 +1,11 @@
 ---
 name: mobile-automation
 description: Control Android and iOS devices, emulators and simulators — launch apps, tap, swipe, type, take screenshots, read the accessibility tree. Use when a task involves a mobile device or app, mobile UI testing, or reproducing a bug on a phone.
-metadata:
-  openclaw:
-    requires:
-      bins:
-        - npx
 ---
 
 # Mobile Automation with Mobile MCP
 
-Tools for driving real phones, emulators and simulators. All tools are
+Tools for driving authorized real phones, emulators and simulators through the installed standalone MCP executable. All tools are
 prefixed `mobile_`.
 
 ## Workflow
@@ -32,6 +27,13 @@ prefixed `mobile_`.
    confirm the UI changed as expected before the next step. Mobile UIs
    animate; if the expected element is not there yet, wait briefly and check
    again rather than tapping blind.
+
+## Privacy and authorization
+
+- The fork disables its own PostHog/Scarf tracking but tool results can still be seen by the connected AI provider.
+- Never extract clipboard, messages, access tokens or sensitive logs unless explicitly needed.
+- Seek explicit user approval for app uninstallation, purchases, account changes, message sending and other destructive operations.
+- Use a disposable emulator for exploratory or untrusted workflows.
 
 ## Tips
 
