@@ -15,6 +15,9 @@ interface RecordEntry {
   configPath: string;
   instructionPath: string;
   executable: string;
+  instructionSeparator?: string;
+  instructionExisted?: boolean;
+  configExisted?: boolean;
 }
 interface SetupState {
   schema: number;
@@ -133,15 +136,15 @@ function addBlock(original: string | null): string {
   }
   return base + (base && !base.endsWith("\n") ? "\n" : "") + (base ? "\n" : "") + managedInstructions() + "\n";
 }
-function removeBlock(original: string | null): string | null {
+function removeBlock(original: string | null, separator: string): string | null {
   if (original === null) return null;
   const idx = original.indexOf(managedInstructions());
   if (idx === -1) {
     if (original.includes(MARKER_START)) throw new Error("Instruction block changed; refusing to remove user edits");
     return original;
   }
-  let start = idx;
-  if (start >= 2 && original.slice(start - 2, start) === "\n\n") start -= 2;
+  if (!original.slice(0, idx).endsWith(separator)) throw new Error("Managed instruction separator changed");
+  const start = idx - separator.length;
   const end = idx + managedInstructions().length;
   const after = original.slice(end).replace(/^\n/, "");
   return original.slice(0, start) + after;
@@ -247,8 +250,11 @@ export async function runAgentSetup(action: SetupAction, options: SetupOptions):
         slot["mobile-mcp"] = configEntry(executable, v2);
         push(writes, paths.config, toJson(config), "Configure " + agent);
       }
-      push(writes, paths.instructions, addBlock(read(paths.instructions)), "Add global instructions for " + agent);
-      current.agents[agent] = {kind: paths.kind, configPath: paths.config, instructionPath: paths.instructions, executable};
+      const originalInstructions = read(paths.instructions);
+      const separator = originalInstructions ? (originalInstructions.endsWith("\n") ? "\n" : "\n\n") : "";
+      push(writes, paths.instructions, addBlock(originalInstructions), "Add global instructions for " + agent);
+      current.agents[agent] = {kind: paths.kind, configPath: paths.config, instructionPath: paths.instructions, executable,
+        instructionSeparator: separator, instructionExisted: originalInstructions !== null, configExisted: original !== null};
     } else {
       if (!installed) { console.log(agent + ": not installed by this CLI; skipping"); continue; }
       if (installed.configPath !== paths.config || installed.instructionPath !== paths.instructions) {
@@ -259,7 +265,8 @@ export async function runAgentSetup(action: SetupAction, options: SetupOptions):
         if (original !== null) {
           const block = tomlBlock(installed.executable);
           if (!original.includes(block)) throw new Error("Codex config changed; will not remove an unrecognized block");
-          push(writes, paths.config, original.replace(block, "").trimEnd() + "\n", "Remove Codex MCP entry");
+          const result = original.replace(block, "");
+          push(writes, paths.config, !installed.configExisted && result.trim() === "" ? null : result, "Remove Codex MCP entry");
         }
       } else if (original !== null) {
         const config = parseJson(paths.config);
@@ -268,9 +275,14 @@ export async function runAgentSetup(action: SetupAction, options: SetupOptions):
         const expected = configEntry(installed.executable, agent === "opencode" && slot === config.mcp?.servers);
         if (JSON.stringify(actual) !== JSON.stringify(expected)) throw new Error(agent + " MCP entry changed; refusing to delete");
         delete slot["mobile-mcp"];
-        push(writes, paths.config, toJson(config), "Remove " + agent + " MCP entry");
+        const emptyCreated = !installed.configExisted &&
+          (agent === "opencode" ? JSON.stringify(config) === '{"mcp":{"servers":{}}}' : JSON.stringify(config) === '{"mcpServers":{}}');
+        push(writes, paths.config, emptyCreated ? null : toJson(config), "Remove " + agent + " MCP entry");
       }
-      push(writes, paths.instructions, removeBlock(read(paths.instructions)), "Remove global instructions for " + agent);
+      const removedInstructions = removeBlock(read(paths.instructions), installed.instructionSeparator || "");
+      push(writes, paths.instructions,
+        !installed.instructionExisted && removedInstructions === "" ? null : removedInstructions,
+        "Remove global instructions for " + agent);
       delete current.agents[agent];
     }
   }
