@@ -144,20 +144,13 @@ export const createMcpServer = (): McpServer => {
 			inputSchema: z.object(paramsSchema),
 			annotations,
 		}, (async (args: any, _extra: any) => {
-			scarf();
 			try {
-				trace(`Invoking ${name} with args: ${JSON.stringify(args)}`);
-				const start = +new Date();
 				const telemetry: Record<string, string | number> = {};
 				const response = await cb(args, telemetry);
-				const duration = +new Date() - start;
-				trace(`=> ${response}`);
-				posthog("tool_invoked", { "ToolName": name, "Duration": duration, ...telemetry }).then();
 				return {
 					content: [{ type: "text", text: response }],
 				};
 			} catch (error: any) {
-				posthog("tool_failed", { "ToolName": name }).then();
 				if (error instanceof ActionableError) {
 					return {
 						content: [{ type: "text", text: `${error.message}. Please fix the issue and try again.` }],
@@ -175,66 +168,10 @@ export const createMcpServer = (): McpServer => {
 		}) as any);
 	};
 
-	const posthog = async (event: string, properties: Record<string, string | number>) => {
-		if (process.env.MOBILEMCP_DISABLE_TELEMETRY) {
-			return;
-		}
-
-		try {
-			const url = "https://us.i.posthog.com/i/v0/e/";
-			const api_key = "phc_KHRTZmkDsU7A8EbydEK8s4lJpPoTDyyBhSlwer694cS";
-			const name = os.hostname() + process.execPath;
-			const distinct_id = crypto.createHash("sha256").update(name).digest("hex");
-			const systemProps: any = {
-				Platform: os.platform(),
-				Product: "mobile-mcp",
-				Version: getAgentVersion(),
-				NodeVersion: process.version,
-				CI: process.env.CI || "0",
-				RobotMode: process.env.MOBILEMCP_LEGACY_ROBOT === "1" ? "legacy" : "mobilecli",
-			};
-
-			const clientName = getClientName();
-			if (clientName !== "unknown") {
-				systemProps.AgentName = clientName;
-			}
-
-			await fetch(url, {
-				method: "POST",
-				headers: {
-					"Content-Type": "application/json"
-				},
-				body: JSON.stringify({
-					api_key,
-					event,
-					properties: {
-						...systemProps,
-						...properties,
-					},
-					distinct_id,
-				})
-			});
-		} catch (err: any) {
-			// ignore
-		}
-	};
-
-	// ponytail: scarf.sh pixel, fired once per process on first tool invocation
-	let scarfSent = false;
-	const scarf = () => {
-		if (scarfSent || process.env.MOBILEMCP_DISABLE_TELEMETRY) {
-			return;
-		}
-
-		scarfSent = true;
-		fetch("https://static.scarf.sh/a.png?x-pxid=f238110d-fcbb-479a-bdda-d47716ec4f07").catch(() => {});
-	};
-
 	const mobilecli = new Mobilecli();
 	const activeRecordings = new Map<string, ActiveRecording>();
 	const agentVerifiedSimulators = new Set<string>();
 	const activeLoginProcesses: ChildProcess[] = [];
-	posthog("launch", {}).then();
 
 	const ensureMobilecliAvailable = (): void => {
 		try {
@@ -312,26 +249,6 @@ export const createMcpServer = (): McpServer => {
 
 		throw new ActionableError(`Device "${deviceId}" not found. Use the mobile_list_available_devices tool to see available devices.`);
 	};
-
-	// ponytail: same tool as @posthog/mcp's reportMissing, without pulling in the sdk
-	// nothing to report to when telemetry is off, so don't advertise the tool at all
-	if (!process.env.MOBILEMCP_DISABLE_TELEMETRY) {
-		tool(
-			"get_more_tools",
-			"Get More Tools",
-			"Only call this when none of the other tools can do what you need on a mobile device, or for mobile testing or mobile app development. " +
-			"Do not call it for tasks unrelated to mobile, or when another tool already covers the task. " +
-			"The context is sent to the mobile-mcp developers, so never include PII, secrets, credentials or other private information in it.",
-			{
-				context: z.string().describe("A description of your goal and what kind of tool would help accomplish it."),
-			},
-			{ readOnlyHint: true, openWorldHint: true },
-			async ({ context }) => {
-				posthog("$mcp_missing_capability", { "$mcp_intent": context }).then();
-				return "Unfortunately, we have shown you the full tool list. We have noted your feedback and will work to improve the tool list in the future.";
-			}
-		);
-	}
 
 	tool(
 		"mobile_list_available_devices",
@@ -971,12 +888,7 @@ export const createMcpServer = (): McpServer => {
 
 				const screenshot64 = screenshot.toString("base64");
 				trace(`Screenshot taken: ${screenshot.length} bytes, ${screenshotSize.width}x${screenshotSize.height}`);
-				posthog("tool_invoked", {
-					"ToolName": "mobile_take_screenshot",
-					"ScreenshotFilesize": screenshot64.length,
-					"ScreenshotMimeType": mimeType,
-				}).then();
-
+		
 				const content: ScreenshotContent[] = [];
 				if (mapping !== null) {
 					content.push({ type: "text", text: mapping });
