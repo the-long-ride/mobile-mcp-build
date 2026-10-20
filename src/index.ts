@@ -7,6 +7,7 @@ import { createMcpServer, getAgentVersion, getSdkVersion } from "./server";
 import { error } from "./logger";
 import { Request, Response } from "express";
 import { program } from "commander";
+import { runAgentSetup } from "./agent-setup";
 
 const logMcpError = (err: Error) => {
 	error("Error handling MCP request: " + (err.stack ?? String(err)));
@@ -111,11 +112,31 @@ const startStdioServer = async () => {
 };
 
 const main = async () => {
-	program
+  // Keep privacy settings forced off for this executable and all spawned children.
+  process.env.MOBILEMCP_DISABLE_TELEMETRY = "1";
+  process.env.MOBILEWRIGHT_DISABLE_TELEMETRY = "1";
+  process.env.DO_NOT_TRACK = "1";
+  program
 		.version(getAgentVersion())
 		.option("--listen <listen>", "Start Streamable HTTP server on [host:]port")
 		.option("--stdio", "Start stdio server (default)")
-		.parse(process.argv);
+
+        ;
+  const agents = "claude|codex|antigravity|opencode|aevra|all (or comma-separated)";
+  program.command("install")
+    .description("Install Mobile MCP and global skills/instructions for AI agents")
+    .requiredOption("--agent <name>", "Target agent: " + agents)
+    .option("--dry-run", "Show exactly what would change; write nothing")
+    .option("--executable <path>", "Override the absolute Mobile MCP binary path")
+    .action(async (opts) => runAgentSetup("install", opts));
+  program.command("uninstall")
+    .description("Remove only installer-owned MCP entries, skill files and instructions")
+    .requiredOption("--agent <name>", "Target agent: " + agents)
+    .option("--dry-run", "Show exactly what would change; write nothing")
+    .action(async (opts) => runAgentSetup("uninstall", opts));
+
+  await program.parseAsync(process.argv);
+  if (program.args[0] === "install" || program.args[0] === "uninstall") return;
 
 	const options = program.opts();
 
