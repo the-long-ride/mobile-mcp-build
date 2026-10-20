@@ -88,13 +88,14 @@ export class Mobilecli {
 			options.timeout = timeoutMs;
 		}
 
-		return execFileSync(path, args, options).toString().trim();
+		return execFileSync(path, args, { ...options, env: { ...process.env, MOBILEMCP_DISABLE_TELEMETRY: "1", MOBILEWRIGHT_DISABLE_TELEMETRY: "1", DO_NOT_TRACK: "1" } }).toString().trim();
 	}
 
 	public spawnCommand(args: string[], captureOutput = false): ChildProcess {
 		const binaryPath = this.getPath();
 		return spawn(binaryPath, args, {
 			stdio: ["ignore", captureOutput ? "pipe" : "ignore", captureOutput ? "pipe" : "ignore"],
+			env: { ...process.env, MOBILEMCP_DISABLE_TELEMETRY: "1", MOBILEWRIGHT_DISABLE_TELEMETRY: "1", DO_NOT_TRACK: "1" },
 		});
 	}
 
@@ -104,12 +105,20 @@ export class Mobilecli {
 			encoding: "buffer",
 			maxBuffer: MAX_BUFFER_SIZE,
 			timeout: TIMEOUT,
+			env: { ...process.env, MOBILEMCP_DISABLE_TELEMETRY: "1", MOBILEWRIGHT_DISABLE_TELEMETRY: "1", DO_NOT_TRACK: "1" },
 		}) as Buffer;
 	}
 
 	private static getMobilecliPath(): string {
 		if (process.env.MOBILECLI_PATH) {
 			return process.env.MOBILECLI_PATH;
+		}
+
+		// Standalone Windows bundle ships the device CLI beside mobile-mcp.exe.
+		// Native executables cannot be executed from inside Bun's virtual filesystem.
+		if (process.platform === "win32") {
+			const alongside = join(dirname(process.execPath), "mobilecli-windows-amd64.exe");
+			if (existsSync(alongside)) {return alongside;}
 		}
 
 		const platform = process.platform;
@@ -171,6 +180,7 @@ export class Mobilecli {
 		const binaryPath = this.getPath();
 		return spawn(binaryPath, ["auth", "login", "--provider", "mobilenext"], {
 			stdio: ["ignore", "pipe", "pipe"],
+			env: { ...process.env, MOBILEMCP_DISABLE_TELEMETRY: "1", MOBILEWRIGHT_DISABLE_TELEMETRY: "1", DO_NOT_TRACK: "1" },
 		});
 	}
 

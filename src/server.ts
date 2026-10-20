@@ -1,9 +1,7 @@
 import { McpServer } from "@modelcontextprotocol/server";
 import { z } from "zod";
 import fs from "node:fs";
-import os from "node:os";
 import path from "node:path";
-import crypto from "node:crypto";
 import { ChildProcess } from "node:child_process";
 
 import { error, trace } from "./logger";
@@ -113,16 +111,6 @@ export const createMcpServer = (): McpServer => {
 	});
 
 
-	const getClientName = (): string => {
-		try {
-			const clientInfo = server.server.getClientVersion();
-			const clientName = clientInfo?.name || "unknown";
-			return clientName;
-		} catch (error: any) {
-			return "unknown";
-		}
-	};
-
 	type ZodSchemaShape = Record<string, z.ZodType>;
 
 	interface ToolAnnotations {
@@ -131,7 +119,7 @@ export const createMcpServer = (): McpServer => {
 		openWorldHint?: boolean;
 	}
 
-	type ToolCallback = (args: any, telemetry: Record<string, string | number>) => Promise<string>;
+	type ToolCallback = (args: any) => Promise<string>;
 
 	// ponytail: batch calls tool callbacks directly, bypassing mcp transport
 	const toolCallbacks = new Map<string, { callback: ToolCallback; paramsSchema: ZodSchemaShape }>();
@@ -144,20 +132,12 @@ export const createMcpServer = (): McpServer => {
 			inputSchema: z.object(paramsSchema),
 			annotations,
 		}, (async (args: any, _extra: any) => {
-			scarf();
 			try {
-				trace(`Invoking ${name} with args: ${JSON.stringify(args)}`);
-				const start = +new Date();
-				const telemetry: Record<string, string | number> = {};
-				const response = await cb(args, telemetry);
-				const duration = +new Date() - start;
-				trace(`=> ${response}`);
-				posthog("tool_invoked", { "ToolName": name, "Duration": duration, ...telemetry }).then();
+				const response = await cb(args);
 				return {
 					content: [{ type: "text", text: response }],
 				};
 			} catch (error: any) {
-				posthog("tool_failed", { "ToolName": name }).then();
 				if (error instanceof ActionableError) {
 					return {
 						content: [{ type: "text", text: `${error.message}. Please fix the issue and try again.` }],
@@ -165,7 +145,7 @@ export const createMcpServer = (): McpServer => {
 					};
 				} else {
 					// a real exception
-					trace(`Tool '${description}' failed: ${error.message} stack: ${error.stack}`);
+					trace(`Tool '${name}' failed (details withheld from local trace)`);
 					return {
 						content: [{ type: "text", text: `Error: ${error.message}` }],
 						isError: true,
@@ -175,66 +155,10 @@ export const createMcpServer = (): McpServer => {
 		}) as any);
 	};
 
-	const posthog = async (event: string, properties: Record<string, string | number>) => {
-		if (process.env.MOBILEMCP_DISABLE_TELEMETRY) {
-			return;
-		}
-
-		try {
-			const url = "https://us.i.posthog.com/i/v0/e/";
-			const api_key = "phc_KHRTZmkDsU7A8EbydEK8s4lJpPoTDyyBhSlwer694cS";
-			const name = os.hostname() + process.execPath;
-			const distinct_id = crypto.createHash("sha256").update(name).digest("hex");
-			const systemProps: any = {
-				Platform: os.platform(),
-				Product: "mobile-mcp",
-				Version: getAgentVersion(),
-				NodeVersion: process.version,
-				CI: process.env.CI || "0",
-				RobotMode: process.env.MOBILEMCP_LEGACY_ROBOT === "1" ? "legacy" : "mobilecli",
-			};
-
-			const clientName = getClientName();
-			if (clientName !== "unknown") {
-				systemProps.AgentName = clientName;
-			}
-
-			await fetch(url, {
-				method: "POST",
-				headers: {
-					"Content-Type": "application/json"
-				},
-				body: JSON.stringify({
-					api_key,
-					event,
-					properties: {
-						...systemProps,
-						...properties,
-					},
-					distinct_id,
-				})
-			});
-		} catch (err: any) {
-			// ignore
-		}
-	};
-
-	// ponytail: scarf.sh pixel, fired once per process on first tool invocation
-	let scarfSent = false;
-	const scarf = () => {
-		if (scarfSent || process.env.MOBILEMCP_DISABLE_TELEMETRY) {
-			return;
-		}
-
-		scarfSent = true;
-		fetch("https://static.scarf.sh/a.png?x-pxid=f238110d-fcbb-479a-bdda-d47716ec4f07").catch(() => {});
-	};
-
 	const mobilecli = new Mobilecli();
 	const activeRecordings = new Map<string, ActiveRecording>();
 	const agentVerifiedSimulators = new Set<string>();
 	const activeLoginProcesses: ChildProcess[] = [];
-	posthog("launch", {}).then();
 
 	const ensureMobilecliAvailable = (): void => {
 		try {
@@ -313,26 +237,6 @@ export const createMcpServer = (): McpServer => {
 		throw new ActionableError(`Device "${deviceId}" not found. Use the mobile_list_available_devices tool to see available devices.`);
 	};
 
-	// ponytail: same tool as @posthog/mcp's reportMissing, without pulling in the sdk
-	// nothing to report to when telemetry is off, so don't advertise the tool at all
-	if (!process.env.MOBILEMCP_DISABLE_TELEMETRY) {
-		tool(
-			"get_more_tools",
-			"Get More Tools",
-			"Only call this when none of the other tools can do what you need on a mobile device, or for mobile testing or mobile app development. " +
-			"Do not call it for tasks unrelated to mobile, or when another tool already covers the task. " +
-			"The context is sent to the mobile-mcp developers, so never include PII, secrets, credentials or other private information in it.",
-			{
-				context: z.string().describe("A description of your goal and what kind of tool would help accomplish it."),
-			},
-			{ readOnlyHint: true, openWorldHint: true },
-			async ({ context }) => {
-				posthog("$mcp_missing_capability", { "$mcp_intent": context }).then();
-				return "Unfortunately, we have shown you the full tool list. We have noted your feedback and will work to improve the tool list in the future.";
-			}
-		);
-	}
-
 	tool(
 		"mobile_list_available_devices",
 		"List Devices",
@@ -340,7 +244,7 @@ export const createMcpServer = (): McpServer => {
 		"These are local devices already connected to this machine, ready to use immediately at no cost - for devices from the shared remote cloud fleet, use mobile_list_remote_devices instead.",
 		{},
 		{ readOnlyHint: true, openWorldHint: false },
-		async ({}, telemetry) => {
+		async ({}) => {
 
 			// from today onward, we must have mobilecli working
 			ensureMobilecliAvailable();
@@ -354,7 +258,6 @@ export const createMcpServer = (): McpServer => {
 
 				// Get Android devices with details
 				const androidDevices = androidManager.getConnectedDevicesWithDetails();
-				telemetry.AndroidCount = androidDevices.length;
 				for (const device of androidDevices) {
 					devices.push({
 						id: device.deviceId,
@@ -367,10 +270,8 @@ export const createMcpServer = (): McpServer => {
 				}
 
 				// Get iOS physical devices with details
-				telemetry.IosRealCount = 0;
 				try {
 					const iosDevices = iosManager.listDevicesWithDetails();
-					telemetry.IosRealCount = iosDevices.length;
 					for (const device of iosDevices) {
 						devices.push({
 							id: device.deviceId,
@@ -392,27 +293,15 @@ export const createMcpServer = (): McpServer => {
 					type: "simulator",
 					includeOffline: true,
 				});
-				telemetry.IosSimInstalledCount = 0;
-				telemetry.IosSimCount = 0;
 				if (response.status === "ok" && response.data && response.data.devices) {
 					const simulators = response.data.devices;
 					const booted = simulators.filter(device => device.state === "online");
-					telemetry.IosSimInstalledCount = simulators.length;
-					telemetry.IosSimCount = booted.length;
 					devices.push(...booted);
 				}
 			} else {
 				const response = mobilecli.getDevices({ includeOffline: true });
-				telemetry.AndroidCount = 0;
-				telemetry.IosRealCount = 0;
-				telemetry.IosSimInstalledCount = 0;
-				telemetry.IosSimCount = 0;
 				if (response.status === "ok" && response.data && response.data.devices) {
 					const availableDevices = response.data.devices.filter(device => device.state === "online");
-					telemetry.AndroidCount = availableDevices.filter(device => device.platform === "android").length;
-					telemetry.IosRealCount = availableDevices.filter(device => device.platform === "ios" && device.type === "real").length;
-					telemetry.IosSimInstalledCount = response.data.devices.filter(device => device.platform === "ios" && device.type === "simulator").length;
-					telemetry.IosSimCount = availableDevices.filter(device => device.platform === "ios" && device.type === "simulator").length;
 					devices.push(...availableDevices);
 				}
 			}
@@ -971,11 +860,6 @@ export const createMcpServer = (): McpServer => {
 
 				const screenshot64 = screenshot.toString("base64");
 				trace(`Screenshot taken: ${screenshot.length} bytes, ${screenshotSize.width}x${screenshotSize.height}`);
-				posthog("tool_invoked", {
-					"ToolName": "mobile_take_screenshot",
-					"ScreenshotFilesize": screenshot64.length,
-					"ScreenshotMimeType": mimeType,
-				}).then();
 
 				const content: ScreenshotContent[] = [];
 				if (mapping !== null) {
@@ -1303,10 +1187,9 @@ export const createMcpServer = (): McpServer => {
 			listElementsAtEnd: z.boolean().optional().describe("Run mobile_list_elements_on_screen after the last step and include its result. Defaults to false"),
 		},
 		{ readOnlyHint: false, destructiveHint: true, openWorldHint: true },
-		async ({ device, steps, stopOnError, listElementsAtEnd }, telemetry) => {
+		async ({ device, steps, stopOnError, listElementsAtEnd }) => {
 			const shouldStopOnError = stopOnError ?? true;
 			const results: string[] = [];
-			telemetry.StepCount = steps.length;
 
 			for (let i = 0; i < steps.length; i++) {
 				const step = steps[i];
@@ -1325,7 +1208,7 @@ export const createMcpServer = (): McpServer => {
 
 				try {
 					const args = z.object(entry.paramsSchema).parse({ device, ...step.arguments });
-					const output = await entry.callback(args, {});
+					const output = await entry.callback(args);
 					results.push(`Step ${i + 1} (${step.name}): ${output}`);
 				} catch (error: any) {
 					results.push(`Step ${i + 1} (${step.name}) failed: ${error.message}`);
@@ -1336,7 +1219,7 @@ export const createMcpServer = (): McpServer => {
 			}
 
 			if (listElementsAtEnd) {
-				results.push(await toolCallbacks.get("mobile_list_elements_on_screen")!.callback({ device }, {}));
+				results.push(await toolCallbacks.get("mobile_list_elements_on_screen")!.callback({ device }));
 			}
 
 			return results.join("\n");
