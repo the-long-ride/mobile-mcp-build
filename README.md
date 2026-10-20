@@ -1,3 +1,83 @@
+## Privacy-first Windows executable (this fork)
+
+This fork provides a **native Windows x64 CLI executable** in the GitHub Actions
+artifact produced by [Windows private Mobile MCP executable](.github/workflows/windows-exe.yml).
+Download the artifact and keep **both** files in the same directory:
+
+- mobile-mcp.exe — bundled MCP server, global agent installer and CLI.
+- mobilecli-windows-amd64.exe — native device-control companion.
+
+No separate Node.js runtime is needed to run the compiled EXE. Android automation
+still requires the Android SDK/platform-tools (ADB) and device USB-debugging
+authorization. This build is **unsigned** unless a signing step is added. Avoid
+enabling Windows security bypasses for untrusted artifacts.
+
+### Default privacy behavior
+
+The fork removes the MCP server's PostHog/Scarf usage telemetry and its
+free-text \`get_more_tools\` feedback endpoint **in source code**.
+It also forces these variables in its own process and when invoking mobilecli:
+
+\`\`\`text
+MOBILEMCP_DISABLE_TELEMETRY=1
+MOBILEWRIGHT_DISABLE_TELEMETRY=1
+DO_NOT_TRACK=1
+\`\`\`
+
+This does **not** mean zero network activity: the tool can open URLs, the optional
+Mobile Next Cloud workflow is networked, and your connected AI provider processes
+tool results. The underlying native device CLI and npm dependencies require an
+independent network audit for a comprehensive no-egress guarantee.
+
+### CLI (PowerShell)
+
+\`\`\`powershell
+.\mobile-mcp.exe --help
+.\mobile-mcp.exe install --help
+.\mobile-mcp.exe uninstall --help
+
+# First show intended operations without writing files
+.\mobile-mcp.exe install --agent all --dry-run
+.\mobile-mcp.exe install --agent all
+
+# Remove only installation-owned entries, instruction blocks and skill files
+.\mobile-mcp.exe uninstall --agent all --dry-run
+.\mobile-mcp.exe uninstall --agent all
+\`\`\`
+
+Supported \`--agent\` values: \`claude\`, \`codex\`, \`antigravity\`,
+\`opencode\`, \`aevra\`, \`all\`, or a comma-separated subset.
+\`aevra\` only prints setup guidance; it does not modify Aevra.
+
+Global configuration targets:
+
+| Agent | MCP config | Global instructions |
+|---|---|---|
+| Claude Code | \`~/.claude.json\` | \`~/.claude/CLAUDE.md\` |
+| Codex | \`~/.codex/config.toml\` | \`~/.codex/AGENTS.md\` |
+| Antigravity | \`~/.gemini/config/mcp_config.json\` | \`~/.gemini/GEMINI.md\` |
+| OpenCode | \`~/.config/opencode/opencode.json\` | \`~/.config/opencode/AGENTS.md\` |
+
+The installer creates global Agent Skills under \`~/.agents/skills/\`:
+\`mobile-automation\` and \`build-mcp-exe\`. Global instructions point to them.
+
+State is tracked under \`~/.config/mobile-mcp-build/installed.json\`.
+The installer refuses to overwrite an existing \`mobile-mcp\` entry and the
+uninstaller refuses to delete edited entries/skills. Files and unrelated
+configuration are preserved. Back up your global agent configurations before
+making changes. \`--dry-run\` never writes.
+
+Use \`mobile-mcp.exe\` directly as the \`command\` in the MCP client. Running
+\`mobile-mcp.exe\` without a setup subcommand starts the stdio MCP server;
+\`mobile-mcp.exe --listen 3000\` starts optional HTTP mode. For HTTP, set
+\`MOBILEMCP_AUTH\` and bind to localhost unless you explicitly need remote access.
+
+The repository includes the reusable
+[build-mcp-exe skill](skills/build-mcp-exe/SKILL.md) to rebuild and validate
+this artifact in a subsequent agent session.
+
+---
+
 # Mobile Next - MCP server for Mobile Development and Automation | iOS, Android, Simulator, Emulator, and Real Devices
 
 **English** | [日本語](README.ja.md) | [简体中文](README.zh-CN.md)
