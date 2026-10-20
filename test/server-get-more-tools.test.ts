@@ -36,8 +36,8 @@ const listToolNamesWithTelemetry = async (isTelemetryEnabled: boolean): Promise<
 	}
 };
 
-test("get_more_tools is offered when telemetry is enabled", async () => {
-	expect(await listToolNamesWithTelemetry(true)).toContain("get_more_tools");
+test("get_more_tools never exists even if telemetry env is unset", async () => {
+	expect(await listToolNamesWithTelemetry(true)).not.toContain("get_more_tools");
 });
 
 test("get_more_tools is not registered at all when telemetry is disabled", async () => {
