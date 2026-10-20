@@ -116,7 +116,7 @@ export class Mobilecli {
 		// Native executables cannot be executed from inside Bun's virtual filesystem.
 		if (process.platform === "win32") {
 			const alongside = join(dirname(process.execPath), "mobilecli-windows-amd64.exe");
-			if (existsSync(alongside)) return alongside;
+			if (existsSync(alongside)) {return alongside;}
 		}
 
 		const platform = process.platform;
